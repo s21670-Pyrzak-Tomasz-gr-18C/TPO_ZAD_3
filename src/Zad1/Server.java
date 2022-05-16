@@ -11,8 +11,7 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
-import java.util.Iterator;
-import java.util.Set;
+import java.util.*;
 
 
 public class Server {
@@ -21,7 +20,11 @@ public class Server {
         new Server();
     }
 
-    Server () throws IOException {
+    Map<String, String> tags = new HashMap<>();
+
+    Server() throws IOException {
+        setExampleTagList();
+
 
         // Utworzenie kanału gniazda serwera
         // i związanie go z konkretnym adresem (host+port)
@@ -58,7 +61,7 @@ public class Server {
             // Przeglądamy "gotowe" klucze
             Iterator<SelectionKey> iter = keys.iterator();
 
-            while(iter.hasNext()) {
+            while (iter.hasNext()) {
 
                 // pobranie klucza
                 SelectionKey key = iter.next();
@@ -112,9 +115,15 @@ public class Server {
 
     }
 
+    private void setExampleTagList() {
+        tags.put("Moda", "wiadomość1");
+        tags.put("Motoryzacja", "wiadomość1");
+        tags.put("Polityka", "wiadomość1");
+    }
+
 
     // Strona kodowa do kodowania/dekodowania buforów
-    private static Charset charset  = Charset.forName("ISO-8859-2");
+    private static Charset charset = Charset.forName("ISO-8859-2");
     private static final int BSIZE = 1024;
 
     // Bufor bajtowy - do niego są wczytywane dane z kanału
@@ -133,13 +142,14 @@ public class Server {
         bbuf.clear();
 
         try {
-            readLoop:                    // Czytanie jest nieblokujące
+            readLoop:
+            // Czytanie jest nieblokujące
             while (true) {               // kontynujemy je dopóki
                 int n = sc.read(bbuf);   // nie natrafimy na koniec wiersza
                 if (n > 0) {
                     bbuf.flip();
                     CharBuffer cbuf = charset.decode(bbuf);
-                    while(cbuf.hasRemaining()) {
+                    while (cbuf.hasRemaining()) {
                         char c = cbuf.get();
                         //System.out.println(c);
                         if (c == '\r' || c == '\n') break readLoop;
@@ -151,28 +161,59 @@ public class Server {
                 }
             }
 
-            String cmd = reqString.toString();
-            System.out.println(reqString);
-
-
-            if (cmd.equals("Hi")) {
-                sc.write(charset.encode(CharBuffer.wrap("Hi")));
+            String[] request = reqString.toString().split(",");
+            String cmd = request[0].toLowerCase();
+            if (cmd.equals("hi")) {
+                sc.write(charset.encode(CharBuffer.wrap("Hi," + createExampleTagList())));
                 //TODO
                 // jesli klient lub admin (get) lista dostepnych tematów - jesli tylko get, jesli get plus tematy - lista tematów plus informacje z mapy z tematami
                 // jeśli nie klient (put, update) dzielimy zapytanie i wykonujemy odpowiednie metody addtemat update temat
 
-            }
-            else if (cmd.equals("Bye")) {           // koniec komunikacji
+            } else if (cmd.equals("add")) {
+                String tagNameToAdd = request[1].substring(0,1).toUpperCase()+request[1].substring(1);
+                if (!tags.containsKey(tagNameToAdd)) {
+                    addNewTag(tagNameToAdd);
+                    sc.write(charset.encode(CharBuffer.wrap("added," + createExampleTagList())));
+                } else {
+                    sc.write(charset.encode(CharBuffer.wrap("notadded," + createExampleTagList())));
+                }
+            }else if(cmd.equals("update")){
+                String tagNameToUpdate = request[1].substring(0,1).toUpperCase()+request[1].substring(1);
+                if(tags.containsKey(tagNameToUpdate)) {
+                    updateTag(tagNameToUpdate, request[2]);
+                    sc.write(charset.encode(CharBuffer.wrap("updated," + createExampleTagList())));
+                }else{
+                    sc.write(charset.encode(CharBuffer.wrap("notupdated," + createExampleTagList())));
+                }
+            } else if (cmd.equals("remove")) {
+                String tagNameToRemove = request[1].substring(0,1).toUpperCase()+request[1].substring(1);
+                    if(tags.containsKey(tagNameToRemove)) {
+                        removeTag(tagNameToRemove);
+                        sc.write(charset.encode(CharBuffer.wrap("removed," + createExampleTagList())));
+                    }else{
+                        sc.write(charset.encode(CharBuffer.wrap("notremoved," + createExampleTagList())));
+                    }
+
+            }else if(cmd.equals("get")){
+                String tagNameToGet = request[1].substring(0,1).toUpperCase()+request[1].substring(1);
+                if(tags.containsKey(tagNameToGet)){
+                    System.out.println("wiadomość dla tematu:"+tagNameToGet+" - "+tags.get(tagNameToGet));
+                    sc.write(charset.encode(CharBuffer.wrap("news,"+tags.get(tagNameToGet))+","+createExampleTagList()));
+                }else{
+                    sc.write(charset.encode(CharBuffer.wrap("bad request," + createExampleTagList())));
+                }
+
+
+            } else if (cmd.equals("Bye")) {           // koniec komunikacji
 
                 sc.write(charset.encode(CharBuffer.wrap("Bye")));
                 System.out.println("Serwer: mówię \"Bye\" do klienta ...\n\n");
 
                 sc.close();                      // - zamknięcie kanału
-                sc.socket().close();			 // i gniazda
+                sc.socket().close();             // i gniazda
+            }
 
-            } else
-                // echo do Klienta
-      //          sc.write(charset.encode(CharBuffer.wrap(reqString)));
+
                 //TODO
                 // stworzyć app dla admina i dla klienta (wykorzystac istniejącą - odpalamy kilku klientów tak jak w porzednim zadaniu)
                 // server - należy stworzyć mapę temat:info (kilka przykładowych od razu na początku)
@@ -192,16 +233,47 @@ public class Server {
                 // server odsyła wiadomość z inf przypisanymi do kluczy
 
 
-            sc.write(charset.encode(CharBuffer.wrap("odpowiadam na zapytanie w kontekście tematu:"+reqString)));
-
-
         } catch (Exception exc) { // przerwane polączenie?
             exc.printStackTrace();
-            try { sc.close();
+            try {
+                sc.close();
                 sc.socket().close();
-            } catch (Exception e) {}
+            } catch (Exception e) {
+            }
         }
 
+    }
+
+    private void removeTag(String tagName) {
+       try {
+               tags.remove(tagName);
+       }catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void updateTag(String tagName, String tagNews) {
+        try {
+            if (tags.containsKey(tagName)) {
+                tags.replace(tagName, tagNews);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private void addNewTag(String tagName) {
+        try {
+            tags.put(tagName,"");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private String createExampleTagList() {
+        String lista = String.join(",", tags.keySet());
+        return lista;
     }
 
 }

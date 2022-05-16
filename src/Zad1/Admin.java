@@ -10,11 +10,17 @@ import java.nio.charset.Charset;
 import java.util.Scanner;
 
 public class Admin {
+    static String input="";
+    static AdminApp adminApp;
+    static CharBuffer cbuf = null;
+    static SocketChannel channel = null;
+    static Charset charset  = Charset.forName("ISO-8859-2");
 
     public static void main(String[] args) throws IOException {
 
+        adminApp = new AdminApp();
 
-        SocketChannel channel = null;
+
         String server = "localhost"; // adres hosta serwera
         int port = 12345; // numer portu
 
@@ -28,11 +34,9 @@ public class Admin {
             // połączenie kanału
             channel.connect(new InetSocketAddress(server, port));
 
-            System.out.print("Admin: łączę się z serwerem ...");
+            System.out.print("Klient: łączę się z serwerem ...");
 
             while (!channel.finishConnect()) {
-                // ew. pokazywanie czasu łączenia (np. pasek postępu)
-                // lub wykonywanie jakichś innych (krótkotrwałych) działań
             }
 
         } catch(UnknownHostException exc) {
@@ -42,81 +46,73 @@ public class Admin {
             exc.printStackTrace();
             // ...
         }
-
-        System.out.println("\nAdmin: jestem połączony z serwerem ...");
-
-        Charset charset  = Charset.forName("ISO-8859-2");
-        Scanner scanner = new Scanner(System.in);
-
-        // Alokowanie bufora bajtowego
-        // allocateDirect pozwala na wykorzystanie mechanizmów sprzętowych
-        // do przyspieszenia operacji we/wy
-        // Uwaga: taki bufor powinien być alokowany jednokrotnie
-        // i wielokrotnie wykorzystywany w operacjach we/wy
+        System.out.println("\nKlient: jestem połączony z serwerem ...");
         int rozmiar_bufora = 1024;
         ByteBuffer inBuf = ByteBuffer.allocateDirect(rozmiar_bufora);
-        CharBuffer cbuf = null;
 
-
-        System.out.println("Admin: wysyłam - Hi"); // TODO dla klienta i admina wysyłamy  tylko get przy połączeniu żeby otrzymać listę tematów, dla admina
-        // "Powitanie" do serwera
+        System.out.println("Admin: wysyłam - Hi");
         channel.write(charset.encode("Hi\n"));
 
         // pętla czytania
         while (true) {
-
-            //cbuf = CharBuffer.wrap("coś" + "\n");
-
-            inBuf.clear();	// opróżnienie bufora wejściowego
-            int readBytes = channel.read(inBuf); // czytanie nieblokujące
-            // natychmiast zwraca liczbę
-            // przeczytanych bajtów
-
-            // System.out.println("readBytes =  " + readBytes);
-
-            if (readBytes == 0) {                              // jeszcze nie ma danych
-                //System.out.println("zero bajtów");
-
-                // jakieś (krótkotrwałe) działania np. info o upływającym czasie
-
+            inBuf.clear();
+            int readBytes = channel.read(inBuf);
+            if (readBytes == 0) {
                 continue;
 
             }
-            else if (readBytes == -1) { // kanał zamknięty po stronie serwera
-                // dalsze czytanie niemożlwe
-                // ...
+            else if (readBytes == -1) {
                 break;
             }
-            else {		// dane dostępne w buforze
-                //System.out.println("coś jest od serwera");
-
-                inBuf.flip();	// przestawienie bufora
-
-                // pobranie danych z bufora
-                // ew. decyzje o tym czy mamy komplet danych - wtedy break
-                // czy też mamy jeszcze coś do odebrania z serwera - kontynuacja
+            else {
+                inBuf.flip();
                 cbuf = charset.decode(inBuf);
 
                 String odSerwera = cbuf.toString();
 
-                System.out.println("Admin: serwer właśnie odpisał ... " + odSerwera);
-                //TODO tu przy połączeniu dostaniemy listę tematów, metoda wysyłająca do gui tematy check-boxy (radio-buttony)
+                System.out.println("Klient: serwer właśnie odpisał ... " + odSerwera);
+
+                String[] response = odSerwera.split(",");
+                String cmd = response[0].toLowerCase();
+                if (cmd.equals("hi")) {
+                    updateTaskListInfo(response);
+                    updateInfoLabel("Wyświetlono wszystkie dostępne tematy wiadomości");
+                } else if (cmd.equals("added")) {
+                    updateTaskListInfo(response);
+                    updateInfoLabel("Dodano nowy temat");
+                } else if (cmd.equals("notadded")) {
+                    updateTaskListInfo(response);
+                    updateInfoLabel("Temat o podanej nazwie już istnieje");
+                } else if (cmd.equals("removed")) {
+                    updateInfoLabel("Usunięto wybrany temat oraz wiadomości");
+                    updateTaskListInfo(response);
+                } else if (cmd.equals("notremoved")) {
+                    updateInfoLabel("Brak tematu o podanej nazwie");
+                    updateTaskListInfo(response);
+                } else if (cmd.equals("updated")){
+                    updateInfoLabel("Zaktualizowano terść wiadomości dla wybranego tematu");
+                    updateTaskListInfo(response);
+                } else if (cmd.equals("notupdated")){
+                    updateInfoLabel("Nie udało się zaktualizowano terśi wiadomości dla wybranego tematu");
+                    updateTaskListInfo(response);
+                }
                 cbuf.clear();
                 if (odSerwera.equals("Bye")) break;
             }
-
-            //TODO tu metoda wywoływana przez przyciski zamiast Scannera String z gui
-
-            // Teraz klient pisze do serwera poprzez Scanner
-            String input = scanner.nextLine();
-            cbuf = CharBuffer.wrap(input + "\n");
-            ByteBuffer outBuf = charset.encode(cbuf);
-            channel.write(outBuf);
-
-            System.out.println("Admin: piszę " + input);
         }
 
-        scanner.close();
-
+    }
+    private static void updateTaskListInfo(String[] response) {
+        String tasksList ="";
+        StringBuilder stringBuilder = new StringBuilder();
+        for (int i = 1; i < response.length ; i++) {
+            stringBuilder.append(response[i]);
+            stringBuilder.append("\n");
+        }
+        tasksList = stringBuilder.toString();
+       adminApp.informationArea.setText(tasksList);
+    }
+    private static void updateInfoLabel(String text) {
+        adminApp.infoLabel.setText(text);
     }
 }

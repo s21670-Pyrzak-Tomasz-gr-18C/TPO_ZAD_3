@@ -10,13 +10,17 @@ import java.nio.charset.Charset;
 import java.util.Scanner;
 
 public class Client {
+    static String input="";
+    static ClientApp clientApp;
+    static CharBuffer cbuf = null;
+    static SocketChannel channel = null;
+    static Charset charset  = Charset.forName("ISO-8859-2");
 
     public static void main(String[] args) throws IOException {
-//TODO startujemy server kilku klientów(różne porty) i admina (dodać metody  startClient, stratr Server uruchamiane w Main,
-// admin to też klient w Main możemy przekazywać do konstruktora w Client dwa argumenty client lub admin i port,
-// w zalezności czy klient czy admin uruchamiamy inne gui wszystkie przyciski zarówno admina i klienta uruchamiają tą samą metodę
 
-        SocketChannel channel = null;
+        clientApp = new ClientApp();
+
+
         String server = "localhost"; // adres hosta serwera
         int port = 12345; // numer portu
 
@@ -33,8 +37,6 @@ public class Client {
             System.out.print("Klient: łączę się z serwerem ...");
 
             while (!channel.finishConnect()) {
-                // ew. pokazywanie czasu łączenia (np. pasek postępu)
-                // lub wykonywanie jakichś innych (krótkotrwałych) działań
             }
 
         } catch(UnknownHostException exc) {
@@ -46,18 +48,10 @@ public class Client {
         }
 
         System.out.println("\nKlient: jestem połączony z serwerem ...");
-
-        Charset charset  = Charset.forName("ISO-8859-2");
         Scanner scanner = new Scanner(System.in);
-
-        // Alokowanie bufora bajtowego
-        // allocateDirect pozwala na wykorzystanie mechanizmów sprzętowych
-        // do przyspieszenia operacji we/wy
-        // Uwaga: taki bufor powinien być alokowany jednokrotnie
-        // i wielokrotnie wykorzystywany w operacjach we/wy
         int rozmiar_bufora = 1024;
         ByteBuffer inBuf = ByteBuffer.allocateDirect(rozmiar_bufora);
-        CharBuffer cbuf = null;
+
 
 
         System.out.println("Klient: wysyłam - Hi"); // TODO dla klienta i admina wysyłamy  tylko get przy połączeniu żeby otrzymać listę tematów, dla admina
@@ -66,20 +60,10 @@ public class Client {
 
         // pętla czytania
         while (true) {
-
-            //cbuf = CharBuffer.wrap("coś" + "\n");
-
             inBuf.clear();	// opróżnienie bufora wejściowego
             int readBytes = channel.read(inBuf); // czytanie nieblokujące
-            // natychmiast zwraca liczbę
-            // przeczytanych bajtów
 
-            // System.out.println("readBytes =  " + readBytes);
-
-            if (readBytes == 0) {                              // jeszcze nie ma danych
-                //System.out.println("zero bajtów");
-
-                // jakieś (krótkotrwałe) działania np. info o upływającym czasie
+            if (readBytes == 0) {
 
                 continue;
 
@@ -92,33 +76,50 @@ public class Client {
             else {		// dane dostępne w buforze
                 //System.out.println("coś jest od serwera");
 
-                inBuf.flip();	// przestawienie bufora
+                inBuf.flip();
 
-                // pobranie danych z bufora
-                // ew. decyzje o tym czy mamy komplet danych - wtedy break
-                // czy też mamy jeszcze coś do odebrania z serwera - kontynuacja
                 cbuf = charset.decode(inBuf);
 
                 String odSerwera = cbuf.toString();
 
                 System.out.println("Klient: serwer właśnie odpisał ... " + odSerwera);
                 //TODO tu przy połączeniu dostaniemy listę tematów, metoda wysyłająca do gui tematy check-boxy (radio-buttony)
+
+                String[] response = odSerwera.split(",");
+                String cmd = response[0].toLowerCase();
+                if (cmd.equals("hi")) {
+                 updateTaskListInfo(response,1);
+
+                } else if (cmd.equals("news")) {
+                  clientApp.newsArea.setText(response[1]);
+                    updateTaskListInfo(response,2);
+
+                } else if (cmd.equals("bad request")){
+                    updateInfoLabel("Nie znaleziono wiadomości dla podanego tematu");
+                    updateTaskListInfo(response,1);
+                }
+
                 cbuf.clear();
                 if (odSerwera.equals("Bye")) break;
             }
-
-            //TODO tu metoda wywoływana przez przyciski zamiast Scannera String z gui
-
-            // Teraz klient pisze do serwera poprzez Scanner
-            String input = scanner.nextLine();
-            cbuf = CharBuffer.wrap(input + "\n");
-            ByteBuffer outBuf = charset.encode(cbuf);
-            channel.write(outBuf);
-
-            System.out.println("Klient: piszę " + input);
         }
 
         scanner.close();
 
     }
+    private static void updateTaskListInfo(String[] response, int index) {
+        String tasksList ="";
+        StringBuilder stringBuilder = new StringBuilder();
+        for (int i = index; i < response.length ; i++) {
+            stringBuilder.append(response[i]);
+            stringBuilder.append("\n");
+        }
+        tasksList = stringBuilder.toString();
+        clientApp.informationArea.setText(tasksList);
+    }
+
+    private static void updateInfoLabel(String text) {
+        ClientApp.newsArea.setText(text);
+    }
 }
+
